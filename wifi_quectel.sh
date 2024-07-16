@@ -50,3 +50,38 @@ route add default gw $GW
 
 sleep 2
 cd /home/gensong/ap/ && ./set_ap.sh > logap &
+
+
+mkdir -p /home/gensong/connect-ap-quectel/logdmesg
+
+mkdir -p /home/gensong/connect-ap-quectel/Ping
+
+
+sleep 10
+echo "*************************************"
+echo "date is : $(date +%Y%m%d%H%M%S)"
+# Get the current timestamp for the ping log file
+ping_log_file="/home/gensong/connect-ap-quectel/Ping/ping_$(date +%Y%m%d%H%M%S).txt"
+echo "ping_log_file is $ping_log_file"
+
+signal_strength=$(iw dev $interface link | awk '/signal/ {print $2}')
+bssid=$(iw dev $interface link | grep 'Connected to' | awk '{print $3}')
+freq=$(iw dev $interface link | grep 'freq:' | awk '{print $2}')
+
+ping $GW | while read pong; do
+  if echo $pong | grep -q "Destination Host Unreachable"; then
+    dmesg -T >> /home/gensong/connect-ap-quectel/logdmesg/log_$(date +%Y%m%d%H%M%S)
+  elif echo $pong | grep -q "Request timeout" || [ -z "$pong" ]; then
+    echo "$(date) signal:$signal_strength bssid:$bssid freq:$freq, Ping timeout"
+  else
+    ping_time=$(echo $pong | awk -F"time=" '{print $2}' | awk -F" " '{print $1}')
+    if (( $(echo "$ping_time > 100" | bc -l) )); then
+      echo "$(date) signal:$signal_strength bssid:$bssid freq:$freq ping time exceeded 100ms: $ping_time ms";
+    else
+      signal_strength=$(iw dev $interface link | awk '/signal/ {print $2}')
+      bssid=$(iw dev $interface link | grep 'Connected to' | awk '{print $3}')
+      freq=$(iw dev $interface link | grep 'freq:' | awk '{print $2}')
+      echo "$(date) signal:$signal_strength bssid:$bssid freq:$freq $pong";
+    fi
+  fi
+done >> "$ping_log_file" &
